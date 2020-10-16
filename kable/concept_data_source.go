@@ -1,18 +1,49 @@
 package kable
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"reflect"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/redradrat/kable/pkg/concepts"
 	"github.com/redradrat/kable/pkg/repositories"
-	"reflect"
 )
+
+var ConcepRepoDataSchema = map[string]*schema.Schema{
+	"name": {
+		Type:     schema.TypeString,
+		Required: true,
+	},
+	"url": {
+		Type:     schema.TypeString,
+		Required: true,
+	},
+	"ref": {
+		Type:     schema.TypeString,
+		Optional: true,
+	},
+	"username": {
+		Type:     schema.TypeString,
+		Optional: true,
+	},
+	"password": {
+		Type:      schema.TypeString,
+		Optional:  true,
+		Sensitive: true,
+	},
+}
 
 var ConceptDataSource = func() *schema.Resource {
 	out := schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"repo": {
-				Type:        schema.TypeMap,
+				Type: schema.TypeSet,
+				Elem: &schema.Resource{
+					Schema: ConcepRepoDataSchema,
+				},
 				Optional:    true,
 				Description: "The repository to get the resource from",
 			},
@@ -21,10 +52,22 @@ var ConceptDataSource = func() *schema.Resource {
 				Required:    true,
 				Description: "The concept identifier.",
 			},
-			"values": {
-				Type:        schema.TypeMap,
+			"inputs": {
+				Type:        schema.TypeSet,
 				Required:    true,
-				Description: "The values map to render the concept.",
+				Description: "The key/value list of inputs to use.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
 			},
 			"target_type": {
 				Type:        schema.TypeString,
@@ -33,8 +76,9 @@ var ConceptDataSource = func() *schema.Resource {
 				Description: "The type of the rendered output. (defaults to 'yaml')",
 			},
 			"rendered": {
-				Type:        schema.TypeString,
-				Computed:    true,
+				Type:     schema.TypeString,
+				Computed: true,
+
 				Description: "The rendered output of the concept.",
 			},
 		},
@@ -92,26 +136,40 @@ func renderConcept(d *schema.ResourceData, id string, avs *concepts.RenderValues
 		return err
 	}
 
-	if err := d.Set("rendered", rdr.PrintFiles()); err != nil {
+	out := rdr.PrintFiles()
+	if err := d.Set("rendered", out); err != nil {
 		return err
 	}
+
+	d.SetId(hash(out))
 
 	return nil
 }
 
 func assertValues(d *schema.ResourceData) (*concepts.RenderValues, error) {
 	avs := concepts.RenderValues{}
-	values := d.Get("values").(map[string]interface{})
-	for k, v := range values {
-		switch assertedType := v.(type) {
+	values := d.Get("inputs").(*schema.Set).List()
+	for _, v := range values {
+		vmap := v.(map[string]interface{})
+		str := vmap["value"].(string)
+		var val interface{}
+		if json.Valid([]byte(str)) {
+			if err := json.Unmarshal([]byte(str), &val); err != nil {
+				return nil, err
+			}
+		} else {
+			val = str
+		}
+		name := vmap["name"].(string)
+		switch assertedType := val.(type) {
 		case bool:
-			avs[k] = concepts.BoolValueType(assertedType)
+			avs[name] = concepts.BoolValueType(assertedType)
 		case string:
-			avs[k] = concepts.StringValueType(assertedType)
+			avs[name] = concepts.StringValueType(assertedType)
 		case int:
-			avs[k] = concepts.IntValueType(assertedType)
+			avs[name] = concepts.IntValueType(assertedType)
 		case map[string]interface{}:
-			avs[k] = concepts.MapValueType(assertedType)
+			avs[name] = concepts.MapValueType(assertedType)
 		default:
 			return nil, fmt.Errorf("unsupported type in values: %s", reflect.TypeOf(v).String())
 		}
@@ -121,4 +179,9 @@ func assertValues(d *schema.ResourceData) (*concepts.RenderValues, error) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func hash(s string) string {
+	sha := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sha[:])
 }

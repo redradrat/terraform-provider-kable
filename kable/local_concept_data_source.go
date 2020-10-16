@@ -1,21 +1,37 @@
 package kable
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"context"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 var LocalConceptDataSource = func() *schema.Resource {
-	out := schema.Resource{
+	return &schema.Resource{
+		ReadContext: LocalConceptRead,
 		Schema: map[string]*schema.Schema{
 			"path": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The path to the concept directory.",
 			},
-			"values": {
-				Type:        schema.TypeMap,
+			"inputs": {
+				Type:        schema.TypeSet,
 				Required:    true,
-				Description: "The values map to render the concept.",
+				Description: "The key/value list of inputs to use.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
 			},
 			"target_type": {
 				Type:        schema.TypeString,
@@ -24,29 +40,27 @@ var LocalConceptDataSource = func() *schema.Resource {
 				Description: "The type of the rendered output. (defaults to 'yaml')",
 			},
 			"rendered": {
-				Type:        schema.TypeString,
-				Computed:    true,
+				Type:     schema.TypeString,
+				Computed: true,
+
 				Description: "The rendered output of the concept.",
 			},
 		},
-		Read:        LocalConceptRead,
 		Description: "The concept data source allows for rendering a concept from a repository",
 	}
-
-	return &out
 }
 
-var LocalConceptRead = func(d *schema.ResourceData, m interface{}) error {
+var LocalConceptRead = func(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	conceptPath := d.Get("path").(string)
 	targetType := d.Get("target_type").(string)
 
 	avs, err := assertValues(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	if err := renderConcept(d, conceptPath, avs, targetType, true); err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	return nil

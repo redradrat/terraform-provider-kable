@@ -11,14 +11,19 @@ provider "kable" {
 }
 
 data "kable_local_concept" "test" {
-    path = "/Users/ralphkuehnert/Development/hilti/concepts/apps/observability/glowroot"
-    target_type = "yaml"
-    values = {
-        instanceName: "test"
-        name: "blabla"
-        namespace: "sdalfjlasd"
-        # ingressAnnotations: {} <- map not yet possible
-        domain: "sadfdsaf"
-        ingressCertSecret: "dsifoasjdi"
+    path = "${path.module}/../kable/test/concept"
+    inputs {
+        name = "instanceName"
+        value = "test"
     }
+    inputs {
+        name = "nameSelection"
+        value = "Option 1"
+    }
+}
+
+
+resource "local_file" "foo" {
+    content     = data.kable_local_concept.test.rendered
+    filename = "${path.module}/foo.yaml"
 }
