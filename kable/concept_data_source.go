@@ -1,11 +1,14 @@
 package kable
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/redradrat/kable/pkg/concepts"
@@ -82,45 +85,60 @@ var ConceptDataSource = func() *schema.Resource {
 				Description: "The rendered output of the concept.",
 			},
 		},
-		Read:        ConceptRead,
+		ReadContext: ConceptRead,
 		Description: "The concept data source allows for rendering a concept from a repository",
 	}
 
 	return &out
 }
-
-var ConceptRead = func(d *schema.ResourceData, m interface{}) error {
+var ConceptRead = func(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	conceptPath := d.Get("id").(string)
 	targetType := d.Get("target_type").(string)
-	rmap := d.Get("repo").(map[string]interface{})
-	r := repositories.Repository{
-		Name: rmap["name"].(string),
-		GitRepository: repositories.GitRepository{
-			URL: rmap["url"].(string),
-		},
-	}
-	user := rmap["username"].(string)
-	if user != "" {
-		r.Username = strPtr(user)
-	}
-	ref := rmap["ref"].(string)
-	if ref != "" {
-		r.GitRef = ref
+
+	var mods []repositories.RegistryModification
+
+	for _, repo := range d.Get("repo").(*schema.Set).List() {
+		rmap := repo.(map[string]interface{})
+		name := rmap["name"].(string)
+		url := rmap["url"].(string)
+		ref := rmap["ref"].(string)
+		r := repositories.Repository{
+			Name: name,
+			GitRepository: repositories.GitRepository{
+				URL: url,
+			},
+		}
+		if ref != "" {
+			r.GitRef = ref
+		}
+		mods = append(mods, repositories.AddRepository(r))
+
+		// Let's see if we have some auth defined
+		user := rmap["username"].(string)
+		pass := rmap["password"].(string)
+		if user != "" && pass != "" {
+			authmod, err := repositories.StoreRepoAuth(url, repositories.AuthPair{Username: user, Password: pass})
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			mods = append(mods, authmod)
+		}
 	}
 
 	// Update the registry
-	if err := repositories.UpdateRegistry(repositories.AddRepository(r)); err != nil {
-		return err
+	if err := repositories.UpdateRegistry(mods...); err != nil {
+		return diag.FromErr(err)
 	}
 
-	conceptIdentifier := concepts.NewConceptIdentifier(conceptPath, r.Name)
+	conceptIdentifier := concepts.ConceptIdentifier(conceptPath)
 	avs, err := assertValues(d)
 	if err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
+	// Now let's render our concept
 	if err := renderConcept(d, conceptIdentifier.String(), avs, targetType, false); err != nil {
-		return err
+		return diag.FromErr(err)
 	}
 
 	return nil
