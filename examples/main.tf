@@ -1,13 +1,12 @@
 terraform {
   required_providers {
     kable = {
-      source = "github.com/redradrat/kable"
+      source = "redradrat/kable"
     }
   }
 }
 
 provider "kable" {
-    version = "0.1"
 }
 
 data "kable_local_concept" "test" {
@@ -20,24 +19,9 @@ data "kable_local_concept" "test" {
         name = "nameSelection"
         value = "Option 1"
     }
-}
-
-
-data "kable_concept" "demo" {
-  repo {
-    name = "demo"
-    url = "https://github.com/demo/repository"
-    username = "$env.REPO_USER"
-    password = "$env.REPO_PASS"
-  }
-  id = "concept@demo"
-  inputs {
-    name = "name"
-    value = "test"
-  }
-  inputs {
-    name = "namespace"
-    value = "default"
-  }
+    sensitive_inputs {
+        name = "name"
+        value = "test"
+    }
 }
 

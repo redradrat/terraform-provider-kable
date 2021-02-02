@@ -71,6 +71,23 @@ var ConceptDataSource = func() *schema.Resource {
 						},
 					},
 				},
+			}, "sensitive_inputs": {
+				Type:        schema.TypeSet,
+				Required:    true,
+				Description: "The key/value list of sensitive inputs to use.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"value": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+						},
+					},
+				},
 			},
 			"target_type": {
 				Type:        schema.TypeString,
@@ -167,6 +184,8 @@ func renderConcept(d *schema.ResourceData, id string, avs *concepts.RenderValues
 func assertValues(d *schema.ResourceData) (*concepts.RenderValues, error) {
 	avs := concepts.RenderValues{}
 	values := d.Get("inputs").(*schema.Set).List()
+	sensitiveValues := d.Get("sensitive_inputs").(*schema.Set).List()
+	values = append(values, sensitiveValues...)
 	for _, v := range values {
 		vmap := v.(map[string]interface{})
 		str := vmap["value"].(string)

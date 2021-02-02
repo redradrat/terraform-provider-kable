@@ -2,6 +2,8 @@ package kable
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -32,6 +34,23 @@ var LocalConceptDataSource = func() *schema.Resource {
 						},
 					},
 				},
+			}, "sensitive_inputs": {
+				Type:        schema.TypeSet,
+				Required:    true,
+				Description: "The key/value list of sensitive inputs to use.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"value": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+						},
+					},
+				},
 			},
 			"target_type": {
 				Type:        schema.TypeString,
@@ -51,7 +70,12 @@ var LocalConceptDataSource = func() *schema.Resource {
 }
 
 var LocalConceptRead = func(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	conceptPath := d.Get("path").(string)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	conceptPath := filepath.Join(wd, d.Get("path").(string))
 	targetType := d.Get("target_type").(string)
 
 	avs, err := assertValues(d)
