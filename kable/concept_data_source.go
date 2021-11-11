@@ -128,7 +128,11 @@ var ConceptRead = func(ctx context.Context, d *schema.ResourceData, m interface{
 		if ref != "" {
 			r.GitRef = ref
 		}
-		mods = append(mods, repositories.AddRepository(r))
+		addRepoMod, err := repositories.AddRepository(r)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		mods = append(mods, addRepoMod)
 
 		// Let's see if we have some auth defined
 		user := rmap["username"].(string)
